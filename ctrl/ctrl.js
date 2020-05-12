@@ -1,86 +1,74 @@
-const axios = require('axios');
-const mecab = require('mecab-ya');
-require('dotenv').config();
-
-// 한글 제외 특수문자, 언어 등 공백처리
-exports.refineData = async (comments) => {
-    console.log('refine 시작');
-    const pattern = /[^(가-힣)]|[()]/gi; // 특수문자 제거
-    let result;
-    try{
-      result = await comments.reduce(async(promisedAcc, curr) => {
-        let acc = await promisedAcc;
-        const nouns = await getNouns(curr.replace(pattern, ' '));
-        acc = acc.concat(nouns);
-        return acc;
-      },[]);
-    } catch (e) {
-      console.log(e);
-    }
-    return result;
-}
+const axios = require("axios");
+const mecab = require("mecab-ya");
+require("dotenv").config();
 
 //형태소 분석 - 명사 구하기
-const getNouns = (comment) => {
-  return new Promise((resolve, reject) => {
-    mecab.nouns(comment, (err, result) => {
-      if(err) reject(err);
-      resolve(result);
-    })
-  })
-}
+exports.getNouns = (comment) => {
+    return new Promise((resolve, reject) => {
+        mecab.nouns(comment, (err, result) => {
+            if (err) reject(err);
+            resolve(result);
+        });
+    });
+};
 
-//단어 빈도수 
-exports.getMostFrequentNouns = (nounsArr) => {
-  console.log('빈도수 구하기 시작');
-  let map = nounsArr.reduce((acc, curr) => {
-    if(acc.has(curr)){
-      return acc.set(curr, acc.get(curr)+1);
-    } else {
-      return acc.set(curr, 1);
-    }
-  }, new Map());
+// 한글 제외 특수문자, 언어 등 공백처리 후 문자열로 합침
+exports.refineData = (comments) => {
+    const pattern = /[^(가-힣)]|[()]/gi; // 완성된 한글 글자만 남기는 정규식
+    const result = comments.reduce((acc, curr) => {
+        const data = curr.replace(pattern, " ");
+        return acc.concat(` ${data}`);
+    }, "");
 
-  map = new Map([...map.entries()].sort((a, b) => b[1] - a[1]));
+    return result;
+};
 
-  let result = [];
-
-  //100개까지만 처리해줌
-  for(let [key, value] of map) {
-    result.push({'text': key, 'value': value});
-    if(result.length >= 100) break;
-  } 
-
-  return result;
-}
-
-//댓글 가져오기 
-exports.getComments = async (videoId) => {
-    console.log('API 시작');
-    let nextPageToken = '';
-    let comments = [];
-
-    while(true){
-      const URL = `https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&maxResults=100&textFormat=plainText&videoId=${videoId}&key=${process.env.GOOGLE_API_KEY}`
-      + (nextPageToken? `&pageToken=${nextPageToken}` : '');
-      try{
-        const response = await axios.get(URL);
-        const { totalResults } = response.data.pageInfo;
-        const items = response.data.items;
-
-        for(let i = 0; i < totalResults; i++) {
-          comments.push(items[i].snippet.topLevelComment.snippet.textDisplay);
-        }
-
-        if(!response.data.nextPageToken) {
-          break;
+//단어 빈도수구하기
+exports.getNounsFrequency = (nounsArr) => {
+    const nounsFrequent = nounsArr.reduce((acc, curr) => {
+        if (acc.hasOwnProperty(curr)) {
+            return {
+                ...acc,
+                [curr]: acc[curr] + 1,
+            };
         } else {
-          nextPageToken = response.data.nextPageToken;
-        };
-      } catch(e) {
-        console.log(e);
-        break;
-      }
+            return {
+                ...acc,
+                [curr]: 1,
+            };
+        }
+    }, {});
+    return nounsFrequent;
+};
+
+//내림 차순으로 정렬 후 50개까지만 자르기
+exports.sortByCount = (nouns) => {
+    let sortable = [];
+    for (const noun in nouns) {
+        sortable.push([noun, nouns[noun]]);
     }
-    return comments;
-}
+    sortable.sort((a, b) => b[1] - a[1]);
+    if (sortable.length >= 100) {
+        return sortable.slice(0, 100);
+    } else {
+        return sortable;
+    }
+};
+
+//댓글 가져오기
+exports.getComments = async (videoId) => {
+    const URL = `https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&maxResults=100&textFormat=plainText&videoId=${videoId}&key=${process.env.GOOGLE_API_KEY}`;
+    try {
+        const response = await axios.get(URL);
+        const items = response.data.items;
+        const comments = items.reduce((acc, curr, i) => {
+            const comment = curr.snippet.topLevelComment.snippet.textOriginal;
+            return [...acc, comment];
+        }, []);
+
+        return comments;
+    } catch (e) {
+        console.log(e);
+        return [];
+    }
+};
