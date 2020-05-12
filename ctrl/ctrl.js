@@ -41,7 +41,7 @@ exports.getNounsFrequency = (nounsArr) => {
     return nounsFrequent;
 };
 
-//내림 차순으로 정렬 후 50개까지만 자르기
+//내림 차순으로 정렬 후 100개까지만 자르기
 exports.sortByCount = (nouns) => {
     let sortable = [];
     for (const noun in nouns) {
