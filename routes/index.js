@@ -13,6 +13,14 @@ const wrap = (asyncFn) => {
     };
 };
 
+//alb에서 상태 체크용
+router.get(
+    "/",
+    wrap(async (req, res, next) => {
+        return res.status(200).send();
+    }),
+);
+
 /* GET comments. */
 router.get(
     "/comments/:id",
